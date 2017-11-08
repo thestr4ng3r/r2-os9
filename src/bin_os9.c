@@ -5,7 +5,19 @@
 #include <r_lib.h>
 #include <r_bin.h>
 
+
 static ut8 os9_module_sync[] = { 0x4a, 0xfc };
+
+#define OS9_LANG_UNSPECIFIED	0
+#define OS9_LANG_68K			1
+#define OS9_LANG_BASIC_ICODE	2
+#define OS9_LANG_PASCAL_PCODE	3
+#define OS9_LANG_C_ICODE		4
+#define OS9_LANG_COBOL_ICODE	5
+#define OS9_LANG_FORTRAN		6
+
+#define OS9_HEADER_OFFSET_LANG	0x13
+
 
 static bool check_bytes(const ut8 *buf, ut64 length)
 {
@@ -25,7 +37,7 @@ static void header(RBinFile *bf)
 	p("0x0000000c  M$Name      0x%08x\n", r_read_be32(buf + 0x0c));
 	p("0x00000010  M$Accs      0x%04x\n", r_read_be16(buf + 0x10));
 	p("0x00000012  M$Type      0x%02x\n", r_read_be8(buf  + 0x12));
-	p("0x00000013  M$Lang      0x%02x\n", r_read_be8(buf  + 0x13));
+	p("0x00000013  M$Lang      0x%02x\n", r_read_be8(buf  + OS9_HEADER_OFFSET_LANG));
 	p("0x00000014  M$Attr      0x%02x\n", r_read_be8(buf  + 0x14));
 	p("0x00000015  M$Revs      0x%02x\n", r_read_be8(buf  + 0x15));
 	p("0x00000016  M$Edit      0x%04x\n", r_read_be16(buf + 0x16));
@@ -38,7 +50,7 @@ static void header(RBinFile *bf)
 
 static RBinInfo *info(RBinFile *bf)
 {
-	const ut8 *bytes = r_buf_buffer (bf->buf);
+	const ut8 *buf = r_buf_buffer (bf->buf);
 	ut64 sz = r_buf_size (bf->buf);
 
 	RBinInfo *ret = R_NEW0 (RBinInfo);
@@ -46,9 +58,14 @@ static RBinInfo *info(RBinFile *bf)
 		return NULL;
 
 	ret->file = bf->file ? strdup(bf->file) : NULL;
-	ret->arch = strdup("m68k");
 	ret->bits = 32;
 	ret->big_endian = true;
+
+	ut8 lang = r_read_be8(buf + OS9_HEADER_OFFSET_LANG);
+	if(lang == OS9_LANG_68K)
+	{
+		ret->arch = strdup("m68k");
+	}
 
 	return ret;
 }
@@ -90,7 +107,26 @@ static RList *sections(RBinFile *bf)
 	header_section->srwx = R_BIN_SCN_READABLE | R_BIN_SCN_MAP;
 	header_section->add = true;
 	r_list_append (ret, header_section);
-	
+
+	return ret;
+}
+
+
+static RList* entries(RBinFile *bf)
+{
+	const ut8 *buf = r_buf_buffer (bf->buf);
+	ut64 sz = r_buf_size (bf->buf);
+
+	RList *ret;
+	if(!(ret = r_list_new ()))
+		return NULL;
+
+	RBinAddr *ptr;
+	if(!(ptr = R_NEW0(RBinAddr)))
+		return ret;
+
+	// TODO
+
 	return ret;
 }
 
