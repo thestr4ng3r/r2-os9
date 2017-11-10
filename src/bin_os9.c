@@ -5,6 +5,7 @@
 #include <r_lib.h>
 #include <r_bin.h>
 
+#define OS9_HEADER_SIZE			0x30
 
 static ut8 os9_module_sync[] = { 0x4a, 0xfc };
 
@@ -16,7 +17,59 @@ static ut8 os9_module_sync[] = { 0x4a, 0xfc };
 #define OS9_LANG_COBOL_ICODE	5
 #define OS9_LANG_FORTRAN		6
 
-#define OS9_HEADER_OFFSET_LANG	0x13
+
+typedef struct os9_module_header
+{
+	ut16 id;
+	ut16 sys_ref;
+	ut32 size;
+	ut32 owner;
+	ut32 name_offset;
+	ut16 accs;
+	ut8 type;
+	ut8 lang;
+	ut8 attr;
+	ut8 revs;
+	ut16 edit;
+	ut32 usage;
+	ut32 symbol;
+} os9_module_header_t;
+
+
+static bool os9_read_header(const ut8 *buf, ut64 size, os9_module_header_t *header)
+{
+	if(size < OS9_HEADER_SIZE)
+		return false;
+
+	header->id = r_read_be16(buf);
+	header->sys_ref = r_read_be16(buf + 0x02);
+	header->size = r_read_be32(buf + 0x04);
+	header->owner = r_read_be32(buf + 0x08);
+	header->name_offset = r_read_be32(buf + 0x0c);
+	header->accs = r_read_be16(buf + 0x10);
+	header->type = r_read_be8(buf  + 0x12);
+	header->lang = r_read_be8(buf  + 0x13);
+	header->attr = r_read_be8(buf  + 0x14);
+	header->revs = r_read_be8(buf  + 0x15);
+	header->edit = r_read_be16(buf + 0x16);
+	header->usage = r_read_be32(buf + 0x18);
+	header->symbol = r_read_be32(buf + 0x1c);
+	// p("0x0000002e  M$Parity    0x%04x\n", r_read_be16(buf + 0x2e));
+
+	return true;
+}
+
+
+
+
+typedef struct os9_module_info
+{
+	os9_module_header_t header;
+} os9_module_info_t;
+
+
+
+
 
 
 static bool check_bytes(const ut8 *buf, ut64 length)
@@ -37,7 +90,7 @@ static void header(RBinFile *bf)
 	p("0x0000000c  M$Name      0x%08x\n", r_read_be32(buf + 0x0c));
 	p("0x00000010  M$Accs      0x%04x\n", r_read_be16(buf + 0x10));
 	p("0x00000012  M$Type      0x%02x\n", r_read_be8(buf  + 0x12));
-	p("0x00000013  M$Lang      0x%02x\n", r_read_be8(buf  + OS9_HEADER_OFFSET_LANG));
+	p("0x00000013  M$Lang      0x%02x\n", r_read_be8(buf  + 0x13));
 	p("0x00000014  M$Attr      0x%02x\n", r_read_be8(buf  + 0x14));
 	p("0x00000015  M$Revs      0x%02x\n", r_read_be8(buf  + 0x15));
 	p("0x00000016  M$Edit      0x%04x\n", r_read_be16(buf + 0x16));
@@ -48,36 +101,61 @@ static void header(RBinFile *bf)
 }
 
 
+
+static void *load_bytes(RBinFile *bf, const ut8 *buf, ut64 sz, ut64 loadaddr, Sdb *sdb)
+{
+	if(!buf || !sz || sz == UT64_MAX)
+		return NULL;
+
+	os9_module_info_t *info = malloc(sizeof(os9_module_info_t));
+
+	if(!os9_read_header(buf, sz, &info->header))
+	{
+		free(info);
+		return NULL;
+	}
+
+	return info;
+}
+
+
+
+static bool load(RBinFile *bf)
+{
+	const ut8 *bytes = bf ? r_buf_buffer (bf->buf) : NULL;
+	ut64 sz = bf ? r_buf_size (bf->buf) : 0;
+
+	if(!bf || !bf->o)
+		return false;
+
+	bf->o->bin_obj = load_bytes (bf, bytes, sz, bf->o->loadaddr, bf->sdb);
+	return bf->o->bin_obj != NULL;
+}
+
+static int destroy(RBinFile *bf)
+{
+	free(bf->o->bin_obj);
+	return true;
+}
+
 static RBinInfo *info(RBinFile *bf)
 {
-	const ut8 *buf = r_buf_buffer (bf->buf);
-	ut64 sz = r_buf_size (bf->buf);
+	os9_module_info_t *info = bf->o->bin_obj;
 
 	RBinInfo *ret = R_NEW0 (RBinInfo);
-	if(!ret)
+	if (!ret)
 		return NULL;
 
 	ret->file = bf->file ? strdup(bf->file) : NULL;
 	ret->bits = 32;
 	ret->big_endian = true;
 
-	ut8 lang = r_read_be8(buf + OS9_HEADER_OFFSET_LANG);
-	if(lang == OS9_LANG_68K)
+	if (info->header.lang == OS9_LANG_68K)
 	{
 		ret->arch = strdup("m68k");
 	}
 
 	return ret;
-}
-
-static bool load(RBinFile *bf)
-{
-	return true;
-}
-
-static int destroy(RBinFile *bf)
-{
-	return true;
 }
 
 static ut64 baddr(RBinFile *bf)
@@ -136,13 +214,15 @@ RBinPlugin r_bin_plugin_os9 = {
 	.name = "os9",
 	.desc = "OS-9 module format",
 	.license = "LGPL3",
+	.load_bytes = &load_bytes,
 	.load = &load,
 	.destroy = &destroy,
 	.check_bytes = &check_bytes,
 	.header = &header,
 	.baddr = &baddr,
 	.info = &info,
-	.sections = &sections
+	.sections = &sections,
+	.entries = &entries
 };
 
 
