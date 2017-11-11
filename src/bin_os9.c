@@ -5,70 +5,14 @@
 #include <r_lib.h>
 #include <r_bin.h>
 
-#define OS9_HEADER_SIZE			0x30
-
-static ut8 os9_module_sync[] = { 0x4a, 0xfc };
-
-#define OS9_LANG_UNSPECIFIED	0
-#define OS9_LANG_68K			1
-#define OS9_LANG_BASIC_ICODE	2
-#define OS9_LANG_PASCAL_PCODE	3
-#define OS9_LANG_C_ICODE		4
-#define OS9_LANG_COBOL_ICODE	5
-#define OS9_LANG_FORTRAN		6
-
-
-typedef struct os9_module_header
-{
-	ut16 id;
-	ut16 sys_ref;
-	ut32 size;
-	ut32 owner;
-	ut32 name_offset;
-	ut16 accs;
-	ut8 type;
-	ut8 lang;
-	ut8 attr;
-	ut8 revs;
-	ut16 edit;
-	ut32 usage;
-	ut32 symbol;
-} os9_module_header_t;
-
-
-static bool os9_read_header(const ut8 *buf, ut64 size, os9_module_header_t *header)
-{
-	if(size < OS9_HEADER_SIZE)
-		return false;
-
-	header->id = r_read_be16(buf);
-	header->sys_ref = r_read_be16(buf + 0x02);
-	header->size = r_read_be32(buf + 0x04);
-	header->owner = r_read_be32(buf + 0x08);
-	header->name_offset = r_read_be32(buf + 0x0c);
-	header->accs = r_read_be16(buf + 0x10);
-	header->type = r_read_be8(buf  + 0x12);
-	header->lang = r_read_be8(buf  + 0x13);
-	header->attr = r_read_be8(buf  + 0x14);
-	header->revs = r_read_be8(buf  + 0x15);
-	header->edit = r_read_be16(buf + 0x16);
-	header->usage = r_read_be32(buf + 0x18);
-	header->symbol = r_read_be32(buf + 0x1c);
-	// p("0x0000002e  M$Parity    0x%04x\n", r_read_be16(buf + 0x2e));
-
-	return true;
-}
-
-
+#include "os9_module.h"
 
 
 typedef struct os9_module_info
 {
 	os9_module_header_t header;
+	os9_module_ext_header_t ext_header;
 } os9_module_info_t;
-
-
-
 
 
 
@@ -81,22 +25,38 @@ static bool check_bytes(const ut8 *buf, ut64 length)
 
 static void header(RBinFile *bf)
 {
+	os9_module_info_t *info = bf->o->bin_obj;
+
+	if(!info)
+		return;
+
+	const ut8 *buf = r_buf_get_at(bf->buf, 0, NULL);
+
 #define p bf->rbin->cb_printf
-	const ut8 *buf = r_buf_get_at (bf->buf, 0, NULL);
-	p("0x00000000  M$ID        0x%04x\n", r_read_be16(buf));
-	p("0x00000002  M$SysRev    0x%04x\n", r_read_be16(buf + 0x02));
-	p("0x00000004  M$Size      0x%08x\n", r_read_be32(buf + 0x04));
-	p("0x00000008  M$Owner     0x%08x\n", r_read_be32(buf + 0x08));
-	p("0x0000000c  M$Name      0x%08x\n", r_read_be32(buf + 0x0c));
-	p("0x00000010  M$Accs      0x%04x\n", r_read_be16(buf + 0x10));
-	p("0x00000012  M$Type      0x%02x\n", r_read_be8(buf  + 0x12));
-	p("0x00000013  M$Lang      0x%02x\n", r_read_be8(buf  + 0x13));
-	p("0x00000014  M$Attr      0x%02x\n", r_read_be8(buf  + 0x14));
-	p("0x00000015  M$Revs      0x%02x\n", r_read_be8(buf  + 0x15));
-	p("0x00000016  M$Edit      0x%04x\n", r_read_be16(buf + 0x16));
-	p("0x00000018  M$Usage     0x%08x\n", r_read_be32(buf + 0x18));
-	p("0x0000001c  M$Symbol    0x%08x\n", r_read_be32(buf + 0x1c));
+	p("0x00000000  M$ID        0x%04x\n", info->header.id);
+	p("0x00000002  M$SysRev    0x%04x\n", info->header.sys_ref);
+	p("0x00000004  M$Size      0x%08x\n", info->header.size);
+	p("0x00000008  M$Owner     0x%08x\n", info->header.owner);
+	p("0x0000000c  M$Name      0x%08x\n", info->header.name_offset);
+	p("0x00000010  M$Accs      0x%04x\n", info->header.accs);
+	p("0x00000012  M$Type      0x%02x\n", info->header.type);
+	p("0x00000013  M$Lang      0x%02x\n", info->header.lang);
+	p("0x00000014  M$Attr      0x%02x\n", info->header.attr);
+	p("0x00000015  M$Revs      0x%02x\n", info->header.revs);
+	p("0x00000016  M$Edit      0x%04x\n", info->header.edit);
+	p("0x00000018  M$Usage     0x%08x\n", info->header.usage);
+	p("0x0000001c  M$Symbol    0x%08x\n", info->header.symbol);
 	p("0x0000002e  M$Parity    0x%04x\n", r_read_be16(buf + 0x2e));
+
+	p("\nadditional values:\n");
+	p("0x00000000  M$Exec      0x%08x\n", info->ext_header.exec_offset);
+	p("0x00000002  M$Excpt     0x%08x\n", info->ext_header.excpt);
+	p("0x00000004  M$Mem       0x%08x\n", info->ext_header.mem_size);
+	p("0x00000008  M$Stack     0x%08x\n", info->ext_header.stack_size);
+	p("0x0000000c  M$IData     0x%08x\n", info->ext_header.idata_offset);
+	p("0x00000010  M$IRefs     0x%08x\n", info->ext_header.irefs_offset);
+	p("0x00000012  M$Init      0x%08x\n", info->ext_header.init_offset);
+	p("0x00000012  M$Term      0x%08x\n", info->ext_header.term_offset);
 #undef p
 }
 
@@ -110,6 +70,12 @@ static void *load_bytes(RBinFile *bf, const ut8 *buf, ut64 sz, ut64 loadaddr, Sd
 	os9_module_info_t *info = malloc(sizeof(os9_module_info_t));
 
 	if(!os9_read_header(buf, sz, &info->header))
+	{
+		free(info);
+		return NULL;
+	}
+
+	if(!os9_read_ext_header(buf, sz, info->header.type, &info->ext_header))
 	{
 		free(info);
 		return NULL;
@@ -165,9 +131,8 @@ static ut64 baddr(RBinFile *bf)
 
 static RList *sections(RBinFile *bf)
 {
-	ut64 sz = r_buf_size (bf->buf);
-
-	if(sz == 0)
+	os9_module_info_t *info = bf->o->bin_obj;
+	if(!info)
 		return NULL;
 
 	RList *ret = NULL;
@@ -179,7 +144,7 @@ static RList *sections(RBinFile *bf)
 		return ret;
 	strcpy (header_section->name, "header");
 	header_section->paddr = 0;
-	header_section->size = 0x30;
+	header_section->size = OS9_BASE_HEADER_SIZE;
 	header_section->vaddr = 0;
 	header_section->vsize = header_section->size;
 	header_section->srwx = R_BIN_SCN_READABLE | R_BIN_SCN_MAP;
@@ -190,7 +155,7 @@ static RList *sections(RBinFile *bf)
 }
 
 
-static RList* entries(RBinFile *bf)
+static RList *entries(RBinFile *bf)
 {
 	const ut8 *buf = r_buf_buffer (bf->buf);
 	ut64 sz = r_buf_size (bf->buf);

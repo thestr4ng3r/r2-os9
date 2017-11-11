@@ -10,7 +10,7 @@ pkg_search_module(R_BIN REQUIRED r_bin)
 pkg_search_module(R_ASM REQUIRED r_asm)
 
 add_library(bin_os9 SHARED
-		src/bin_os9.c)
+		src/bin_os9.c src/os9_module.c)
 
 set_target_properties(bin_os9 PROPERTIES PREFIX "")
 target_include_directories(bin_os9 PUBLIC ${R_BIN_INCLUDE_DIRS})
