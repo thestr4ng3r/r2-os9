@@ -7,6 +7,8 @@
 
 #define OS9_BASE_HEADER_SIZE		0x30
 
+#define OS9_CRC_SIZE				0x3
+
 
 extern const ut8 os9_module_sync[];
 

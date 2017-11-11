@@ -16,6 +16,12 @@ typedef struct os9_module_info
 
 
 
+static ut64 p2v(ut64 offset)
+{
+	return offset;
+}
+
+
 static bool check_bytes(const ut8 *buf, ut64 length)
 {
 	return buf && length >= 2 &&
@@ -139,17 +145,49 @@ static RList *sections(RBinFile *bf)
 	if(!(ret = r_list_new ()))
 		return NULL;
 
+
+	ut64 header_size = os9_header_size(info->header.type);
+
 	RBinSection *header_section = R_NEW0 (RBinSection);
 	if(!header_section)
 		return ret;
 	strcpy (header_section->name, "header");
 	header_section->paddr = 0;
-	header_section->size = OS9_BASE_HEADER_SIZE;
-	header_section->vaddr = 0;
+	header_section->size = header_size;
+	header_section->vaddr = p2v(0);
 	header_section->vsize = header_section->size;
 	header_section->srwx = R_BIN_SCN_READABLE | R_BIN_SCN_MAP;
 	header_section->add = true;
 	r_list_append (ret, header_section);
+
+
+	ut64 sz = r_buf_size (bf->buf);
+	ut64 body_size = sz - header_size - OS9_CRC_SIZE;
+
+	RBinSection *body_section = R_NEW0 (RBinSection);
+	if(!body_section)
+		return ret;
+	strcpy (body_section->name, "body");
+	body_section->paddr = header_size;
+	body_section->size = body_size;
+	body_section->vaddr = p2v(body_section->paddr);
+	body_section->vsize = body_section->size;
+	body_section->srwx = R_BIN_SCN_READABLE | R_BIN_SCN_EXECUTABLE | R_BIN_SCN_MAP;
+	body_section->add = true;
+	r_list_append (ret, body_section);
+
+
+	RBinSection *crc_section = R_NEW0 (RBinSection);
+	if(!crc_section)
+		return ret;
+	strcpy (crc_section->name, "crc");
+	crc_section->paddr = header_size + body_size;
+	crc_section->size = OS9_CRC_SIZE;
+	crc_section->vaddr = p2v(crc_section->paddr);
+	crc_section->vsize = crc_section->size;
+	crc_section->srwx = R_BIN_SCN_READABLE | R_BIN_SCN_MAP;
+	crc_section->add = true;
+	r_list_append (ret, crc_section);
 
 	return ret;
 }
@@ -157,18 +195,30 @@ static RList *sections(RBinFile *bf)
 
 static RList *entries(RBinFile *bf)
 {
-	const ut8 *buf = r_buf_buffer (bf->buf);
-	ut64 sz = r_buf_size (bf->buf);
+	os9_module_info_t *info = bf->o->bin_obj;
+	if(!info)
+		return NULL;
 
 	RList *ret;
 	if(!(ret = r_list_new ()))
 		return NULL;
 
-	RBinAddr *ptr;
-	if(!(ptr = R_NEW0(RBinAddr)))
-		return ret;
+	if(info->header.type == OS9_MODULE_TYPE_PROGRAM
+	   || info->header.type == OS9_MODULE_TYPE_TRAPLIB
+	   || info->header.type == OS9_MODULE_TYPE_DRIVR
+	   || info->header.type == OS9_MODULE_TYPE_FLMGR
+	   || info->header.type == OS9_MODULE_TYPE_SYSTM)
+	{
+		RBinAddr *entry;
+		if(!(entry = R_NEW0(RBinAddr)))
+			return ret;
+		r_list_append(ret, entry);
 
-	// TODO
+		entry->bits = 32;
+		entry->paddr = info->ext_header.exec_offset;
+		entry->vaddr = p2v(entry->paddr);
+		entry->haddr = 0x30;
+	}
 
 	return ret;
 }
