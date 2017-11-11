@@ -14,7 +14,7 @@ add_library(bin_os9 SHARED
 
 set_target_properties(bin_os9 PROPERTIES PREFIX "")
 target_include_directories(bin_os9 PUBLIC ${R_BIN_INCLUDE_DIRS})
-target_link_libraries(bin_os9 ${R_BIN_LIBRARIES})
+target_link_libraries(bin_os9 ${R_BIN_LDFLAGS})
 
 
 execute_process(COMMAND r2 -hh COMMAND grep LIBR_PLUGINS COMMAND awk "{print \$2}" OUTPUT_VARIABLE LIBR_PLUGINS)
